@@ -53,7 +53,7 @@ def plot_sample(data: List[Tuple[int or float, int or float]],
                 x_range: List[int or float] = None,
                 y_range: List[int or float] = None,
                 x_mark: List[int or float] = None,
-                y_mark: List[int or float] = None,
+                y_mark: List[int] or List[float] = None,
                 x_label: str = None,
                 y_label: str = None,
                 title: Optional[str] = None ) -> plt.Axes:
