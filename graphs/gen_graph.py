@@ -15,7 +15,6 @@ FLOP = ['CDN_flop']
 # Configure logging
 # logging.basicConfig(level=logging.DEBUG)
 
-
 def get_module_list(ast:ast) -> list[ModuleDef]:
     module_list = []
     for child in ast.children():
@@ -222,35 +221,34 @@ def gen_graph(ast:ast) -> tuple[nx.Graph, int]:
     logging.debug(f"Module list generation time:{end_time - start_time}s")
     gnode_list = []
     module_names = []
+    name_to_node_map = {}
     start_time = time.time()
     for module in module_list:
         gnode_list.append(extract_feature(module, module_names))
         module_names.append(module.name)
+        name_to_node_map[module.name] = gnode_list[-1]
     end_time = time.time()
     logging.debug(f"Module feature extraction time:{end_time - start_time}s")
     
     # Find Unique modules
-    start_time = time.time()
-    name_to_node_map = {}
-    for i in range(len(gnode_list)):
-        if i - 1 >= 0:
-            if gnode_list[i] == gnode_list[i-1]:
-                if gnode_list[i-1].name not in name_to_node_map:
-                    name_to_node_map[gnode_list[i].name] = gnode_list[i-1]
-                else:
-                    name_to_node_map[gnode_list[i].name] = \
-                                        name_to_node_map[gnode_list[i-1].name]
-            else:
-                name_to_node_map[gnode_list[i].name] = gnode_list[i]
-        else:
-            name_to_node_map[gnode_list[i].name] = gnode_list[i]
-    
     unique_gnode = []
     unique_gnode_name = []
-    for _, value in name_to_node_map.items():
-        if value.name not in unique_gnode_name:
-            unique_gnode.append(value)
-            unique_gnode_name.append(value.name)
+    start_time = time.time()
+    sorted_module_names = sorted(module_names)
+    for module_name in sorted_module_names:
+        if module_name in FLOP:
+            continue
+        
+        if len(unique_gnode) == 0:
+            unique_gnode.append(name_to_node_map[module_name])
+            unique_gnode_name.append(module_name)
+        
+        if unique_gnode[-1] != name_to_node_map[module_name]:
+            unique_gnode.append(name_to_node_map[module_name])
+            unique_gnode_name.append(module_name)
+        else:
+            name_to_node_map[module_name] = unique_gnode[-1]
+    
     end_time = time.time()
     logging.debug(f"Unique module extraction time:{end_time - start_time}s")
     
@@ -263,7 +261,8 @@ def gen_graph(ast:ast) -> tuple[nx.Graph, int]:
     
     start_time = time.time()
     G = nx.Graph()
-    id = create_graph(unique_gnode[-2], name_to_node_map, G, -1, 0)
+    id = create_graph(name_to_node_map[module_names[-2]], \
+                    name_to_node_map, G, -1, 0)
     end_time = time.time()
     
     logging.debug(f"Create Graph runtime: {end_time - start_time}s")
@@ -279,7 +278,7 @@ def gen_graph_from_netlist(netlist:str) -> tuple[nx.Graph, int]:
     G, count = gen_graph(ast)
     return G, count
 
-def gen_hier_graph(node_file:str, edge_file:str) -> nx.Graph:
+def gen_phy_hier_graph(node_file:str, edge_file:str) -> nx.Graph:
     if not os.path.exists(node_file):
         logging.error(f"{node_file} does not exists.")
     
