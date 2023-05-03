@@ -13,7 +13,7 @@ def gen_lhs_sample(n_samples:int = 16, \
                 seed:int = 42) -> List[tuple[int or float, int or float]]:
     '''
     n_samples: number of samples  
-    space: sample space. If inputs are integer sampled data points will be 
+    space: sample space. If inputs are integer sampled data points will be
     integers  
     criterion: 0) maxmin, 1) correlation, 2) ratio, default is 0 
     // Input to Lhs function  
