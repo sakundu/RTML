@@ -2,6 +2,8 @@ from pyverilog.vparser.parser import parse
 from pyverilog.vparser import ast
 from pyverilog.vparser.ast import Width, ModuleDef
 import logging
+from typing import Tuple, List, Dict
+import pickle
 import networkx as nx
 import matplotlib.pyplot as plt
 import sys
@@ -15,7 +17,7 @@ FLOP = ['CDN_flop']
 # Configure logging
 # logging.basicConfig(level=logging.DEBUG)
 
-def get_module_list(ast:ast) -> list[ModuleDef]:
+def get_module_list(ast:ast) -> List[ModuleDef]:
     module_list = []
     for child in ast.children():
         for c in child.children():
@@ -42,7 +44,7 @@ class GNode():
         self.macro_count = 0
         self.avg_logic_bits = 0.0
         self.children_name = None
-        self.children:list[GNode] = None
+        self.children:list[GNode] = None            # type: ignore
             
     def update_input_count(self, count:int) -> None:
         self.input_count = count
@@ -50,10 +52,10 @@ class GNode():
     def update_output_count(self, count:int) -> None:
         self.output_count = count
     
-    def update_avg_input_bits(self, count:int) -> None:
+    def update_avg_input_bits(self, count:float) -> None:
         self.avg_input_bits = count
         
-    def update_avg_output_bits(self, count:int) -> None:
+    def update_avg_output_bits(self, count:float) -> None:
         self.avg_output_bits = count
     
     def update_logic_count(self, count:int) -> None:
@@ -65,13 +67,13 @@ class GNode():
     def update_macro_count(self, count:int) -> None:
         self.macro_count = count
     
-    def update_avg_logic_bits(self, count:int) -> None:
+    def update_avg_logic_bits(self, count:float) -> None:
         self.avg_logic_bits = count
     
-    def update_children_name(self, children:list[str]) -> None:
+    def update_children_name(self, children: List[str]) -> None:
         self.children_name = children
     
-    def update_children(self, children:list['GNode']) -> None:
+    def update_children(self, children: List['GNode']) -> None:
         self.children = children
     
     def __eq__(self, other:'GNode') -> bool:
@@ -88,8 +90,8 @@ class GNode():
             else:
                 return False
 
-def extract_feature(module, module_list:list[str],
-                    primitive_list:list[str] = PRIMITIVES) -> GNode:
+def extract_feature(module, module_list: List[str],
+                    primitive_list: List[str] = PRIMITIVES) -> GNode:
     # Number of Inputs 
     input_count = 0
     # Number of Outputs
@@ -168,7 +170,9 @@ def extract_feature(module, module_list:list[str],
     #     print('\t',i)
     return gnode
 
-def create_graph(gnode:GNode, name_to_node_map:map, G:nx.Graph, pid:int, 
+def create_graph(gnode: GNode,
+                 name_to_node_map: Dict[str, GNode],
+                 G: nx.Graph, pid: int,
                 id:int) -> int:
     G.add_node(id, name=gnode.name, input_count=gnode.input_count,
                output_count=gnode.output_count, node_id = gnode.id,
@@ -201,20 +205,20 @@ def draw_graph(G:nx.Graph, count:int) -> None:
     Generates graph visualization
     '''
     name_to_nodelist = {}
-    for node in G.nodes(data = True):
+    for node in G.nodes(data = True): # type: ignore
         if node[1]['name'] not in name_to_nodelist:
             name_to_nodelist[node[1]['name']] = []
         name_to_nodelist[node[1]['name']].append(node)
     
-    cmap = plt.get_cmap('coolwarm', count)
-    pos = nx.spring_layout(G)
-    nx.draw_networkx(G, pos, with_labels=True)
+    cmap = plt.get_cmap('coolwarm', count) # type: ignore
+    pos = nx.spring_layout(G) # type: ignore
+    nx.draw_networkx(G, pos, with_labels=True) # type: ignore
     for key, value in name_to_nodelist.items():
         cid = name_to_nodelist[key][0][1]['node_id']
-        nx.draw_networkx_nodes(G, pos, nodelist=[n[0] for n in value], 
+        nx.draw_networkx_nodes(G, pos, nodelist=[n[0] for n in value],  # type: ignore
                                node_color = [list(cmap(cid)[0:3])])
 
-def gen_graph(ast:ast) -> tuple[nx.Graph, int]:
+def gen_graph(ast:ast) -> Tuple[nx.Graph, int]:
     start_time = time.time()
     module_list = get_module_list(ast)
     end_time = time.time()
@@ -270,7 +274,7 @@ def gen_graph(ast:ast) -> tuple[nx.Graph, int]:
     return G, j
 
 
-def gen_graph_from_netlist(netlist:str) -> tuple[nx.Graph, int]:
+def gen_graph_from_netlist(netlist:str) -> Tuple[nx.Graph, int]:
     start_time = time.time()
     ast, _ = parse([netlist], debug = False)
     end_time = time.time()
@@ -320,8 +324,22 @@ def gen_phy_hier_graph(node_file:str, edge_file:str) -> nx.Graph:
     fp.close()
     return G
 
+def save_graph(G: nx.Graph, file_name: str) -> None:
+    save_dir = os.path.dirname(file_name)
+    
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    
+    with open(file_name, "wb") as f:
+        pickle.dump(G, f)
+    
+    return
+
 if __name__ == '__main__':
     netlist = sys.argv[1]
-    ast, _ = parse([netlist], debug = False)
-    G, count = gen_graph(ast)
-    draw_graph(G, count)
+    G, count = gen_graph_from_netlist(netlist)
+    if len(sys.argv) == 3:
+        file_name = sys.argv[2]
+        save_graph(G, file_name)
+    else:
+        draw_graph(G, count)
