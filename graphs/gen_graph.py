@@ -1,11 +1,11 @@
-from pyverilog.vparser.parser import parse
-from pyverilog.vparser import ast
-from pyverilog.vparser.ast import Width, ModuleDef
+from pyverilog.vparser.parser import parse          # type: ignore
+from pyverilog.vparser import ast                   # type: ignore
+from pyverilog.vparser.ast import Width, ModuleDef  # type: ignore
 import logging
-from typing import Tuple, List, Dict
+from typing import Tuple, List, Dict, Optional
 import pickle
-import networkx as nx
-import matplotlib.pyplot as plt
+import networkx as nx                               # type: ignore
+import matplotlib.pyplot as plt                     # type: ignore
 import sys
 import os
 import time
@@ -44,7 +44,7 @@ class GNode():
         self.macro_count = 0
         self.avg_logic_bits = 0.0
         self.children_name = None
-        self.children:list[GNode] = None            # type: ignore
+        self.children: Optional[List[GNode]] = None 
             
     def update_input_count(self, count:int) -> None:
         self.input_count = count
@@ -215,7 +215,7 @@ def draw_graph(G:nx.Graph, count:int) -> None:
     nx.draw_networkx(G, pos, with_labels=True) # type: ignore
     for key, value in name_to_nodelist.items():
         cid = name_to_nodelist[key][0][1]['node_id']
-        nx.draw_networkx_nodes(G, pos, nodelist=[n[0] for n in value],  # type: ignore
+        nx.draw_networkx_nodes(G, pos, nodelist=[n[0] for n in value], # type: ignore 
                                node_color = [list(cmap(cid)[0:3])])
 
 def gen_graph(ast:ast) -> Tuple[nx.Graph, int]:

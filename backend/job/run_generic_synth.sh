@@ -8,7 +8,6 @@ set log_num_cycle="$argv[6]"
 set size="$argv[7]"
 set num_unit="$argv[8]"
 
-
 set script_dir="/home/fetzfs_projects/RTML/sakundu/Code/RTML/backend/script"
 
 set prefix="${design}_${size}_${num_cycle}_${input_bit_width}_${num_unit}"
@@ -29,6 +28,6 @@ sed -i "s@xx_unit_xx@${num_unit}@" config.vh
 set sign='`'
 echo "${sign}define ${design} 1" >> config.vh
 
-./run.sh
+./run_gen_graph.sh
 
 cp syn_handoff/*generic*.v ../accelerator_${prefix}.v

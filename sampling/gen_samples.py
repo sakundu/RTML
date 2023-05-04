@@ -10,7 +10,7 @@ def gen_lhs_sample(n_samples:int = 16, \
                 space: List[Tuple[float, float] or Tuple[int, int]] \
                     = [(0.4, 2.2), (0.4, 0.9)], \
                 criterion:int = 0, lhs_type:int = 1, \
-                seed:int = 42) -> List[tuple[int or float, int or float]]:
+                seed:int = 42) -> List[Tuple[int or float, int or float]]:
     '''
     n_samples: number of samples  
     space: sample space. If inputs are integer sampled data points will be
@@ -22,14 +22,14 @@ def gen_lhs_sample(n_samples:int = 16, \
       
     Returns the list of the sampled data points 
     '''
-    space = Space(space)
+    space_ = Space(space)
     # Crietrion: maximin, correlation, ratio
     # lhs_type: classic, centered
     criterions = ["maximin", "correlation", "ratio"]
     lhs_types = ["classic", "centered"]
     lhs = Lhs(criterion=criterions[criterion], iterations=50000, \
              lhs_type=lhs_types[lhs_type])
-    samples = lhs.generate(space.dimensions, n_samples, random_state = seed)
+    samples = lhs.generate(space_.dimensions, n_samples, random_state = seed)
     return samples
 
 def gen_halton_sample(n_samples = 16, space = [(0.4, 2.2), (0.4, 0.9)], \
@@ -49,14 +49,14 @@ def gen_sobol_sample(n_samples = 16, space = [(0.4, 2.2), (0.4, 0.9)], \
 def plot_sample(data: List[Tuple[int or float, int or float]], 
                 label: str,
                 color: str,
-                ax: plt.Axes = None,
-                x_range: List[int or float] = None,
-                y_range: List[int or float] = None,
-                x_mark: List[int or float] = None,
-                y_mark: List[int] or List[float] = None,
-                x_label: str = None,
-                y_label: str = None,
-                title: Optional[str] = None ) -> plt.Axes:
+                ax: Optional[plt.Axes] = None,
+                x_range: Optional[List[int or float]] = None,
+                y_range: Optional[List[int or float]] = None,
+                x_mark: Optional[List[int or float]] = None,
+                y_mark: Optional[List[int] or List[float]] = None,
+                x_label: Optional[str] = None,
+                y_label: Optional[str] = None,
+                title: Optional[str] = None) -> plt.Axes:
     
     x_data: List[int or float] = []
     y_data: List[int or float] = []
@@ -83,7 +83,7 @@ def plot_sample(data: List[Tuple[int or float, int or float]],
         ax.set_xlim(x_range)
     
     if y_range != None:
-        ax.set_ylim(y_range)
+        ax.set_ylim(y_range[0], y_range[1])
     
     if x_label != None:
         ax.set_xlabel(x_label)

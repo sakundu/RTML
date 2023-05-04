@@ -8,7 +8,7 @@ import re
 
 run_dir = sys.argv[1]
 TOP_MODULE = 'accelerator'
-util = os.getenv('UTIL')
+# util = os.getenv('UTIL')
 
 base_name = os.path.basename(run_dir)
 base_dir = os.path.dirname(run_dir)
@@ -16,15 +16,19 @@ run_type = os.path.basename(base_dir)
 design_details = base_name.split('_')
 benchmark = design_details[0]
 
-if len(design_details) == 6:
+# print(design_details)
+if len(design_details) in [6, 7]:
     size = int(design_details[1])
     num_cycle = int(design_details[2])
     num_unit = int(design_details[3])
     bit_width = int(design_details[4])
     tcp = int(design_details[5])
     tcf = round(1000/tcp,6)
+    if len(design_details) == 7:
+        util = float(design_details[6])
 else:
     print(f"Run dir:{run_dir} is not valid")
+    exit()
 
 file_summary = run_dir + "/rpt/invs_summary.rpt"
 file_sdc = run_dir + "/rpt/" + TOP_MODULE + "_updated.sdc"

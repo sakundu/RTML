@@ -23,7 +23,7 @@ set job_dir="/home/fetzfs_projects/RTML/sakundu/Code/RTML/backend/job"
 set graph_dir=`echo "$rpt_file" | sed 's@\.[^\.]*$@@'`
 
 ## Create Run Area and Copy file and udpate the files ##
-## basedir name $run_dir/<design>_<size>_<num_cycle>_<num_unit>_<bit_width>_<tcp>
+## basedir name $run_dir/<design>_<size>_<num_cycle>_<num_unit>_<bit_width>_<tcp>_<util>
 set prefix="${design}_${size}_${num_cycle}_${num_unit}_${bit_width}"
 set p_dir="${run_dir}/${prefix}_${tcp}_${UTIL}"
 echo "Run Dir: $p_dir"
@@ -46,28 +46,30 @@ echo "${sign}define ${design} 1" >> config.vh
 
 ## Starting the SPNR Run ##
 source run_spnr
-source run_graph_gen.sh
+bash run_gen_graph.sh
 
 ## Generate the Report ##
 set PYTHON_CMD="/home/zf4_projects/RTML/sakundu/env/sk-py/bin/python3.9"
 $PYTHON_CMD ${job_dir}/extract_pnr_metrics.py $p_dir >> ${rpt_file}
 
 ### Extract the graphs ###
+module unload iverilog
+module load iverilog/v10_3
 
 ## TCP Based Graph ##
 set graph_tcp_generic_graph="${graph_dir}/${prefix}_${tcp}.graph"
 set graph_generic_verilog=`ls ${p_dir}/syn_handoff_sdc/*generic.v`
 if ($graph_generic_verilog != "") then
-  $PYTHON_CMP ${job_dir}/gen_graph.py $graph_generic_verilog \
+  $PYTHON_CMD ${job_dir}/gen_graph.py $graph_generic_verilog \
                       $graph_tcp_generic_graph
 endif
 
 ## Without TCP Based Graph ##
 if ($RUN_GENERIC == "1") then
-  set graph_generic_graph="${graph_dir}/${prefix}_${tcp}.graph"
+  set graph_generic_graph="${graph_dir}/${prefix}.graph"
   set graph_generic_verilog=`ls ${p_dir}/syn_handoff/*generic.v`
   if ($graph_generic_verilog != "") then
-    $PYTHON_CMP ${job_dir}/gen_graph.py $graph_generic_verilog \
+    $PYTHON_CMD ${job_dir}/gen_graph.py $graph_generic_verilog \
                         $graph_generic_graph
   endif
 endif

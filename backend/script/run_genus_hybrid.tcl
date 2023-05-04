@@ -30,7 +30,7 @@ set_db auto_ungroup none
 set_db library $list_lib
 
 # Exclude Scan flops
-set_dont_use [get_lib_cells *sdf*]
+# set_dont_use [get_lib_cells *sdf*]
 
 #################################################
 # Load Design and Initialize
@@ -46,7 +46,7 @@ elaborate $DESIGN
 time_info Elaboration
 
 if {![info exist ::env(READ_SDC)] || $::env(READ_SDC) == 0} {
-    source $sdc
+    eval_legacy {source $sdc}
 }
 
 init_design
