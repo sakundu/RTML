@@ -48,6 +48,7 @@ def gen_gnu_job_list(job_file: str, run_dir: str, rpt_file: str,
             log_cycle = int(floor(log(num_cycle)/log(2)) + 1)
             size = sizes[i]
             num_unit = num_units[i]
+            run_generic = 1
             for cp, util in cp_util_list:
                 for ip_bit in ip_bits:
                     if cp_step != 0:
@@ -63,9 +64,37 @@ def gen_gnu_job_list(job_file: str, run_dir: str, rpt_file: str,
                     else:
                         f2.write(f"tcsh {run_file} {design} {cp} {ip_bit} "
                             f"{ip_bit*2} {num_cycle} {log_cycle} {size} "
-                            f"{num_unit} {run_dir} {rpt_file} {util}\n")
+                            f"{num_unit} {run_dir} {rpt_file} {util} " 
+                            f"{run_generic}\n")
+                run_generic = 0
     f2.close()
 
+def gen_qsub_from_job_list(job_list_file:str, qsub_dir:str, 
+                           prefix:str, queue: str = 'home',
+                           wall_time:str = '12:30:00') -> None:
+    qsub_file=f'{qsub_dir}/{prefix}_joblist'
+    qsub_job_dir=f'{qsub_dir}/{prefix}'
+    
+    if not os.path.exists(qsub_job_dir):
+        os.makedirs(qsub_job_dir)
+    
+    i = 1
+    job_fp = open(qsub_file, 'w')
+    with open(job_list_file, "r") as file:
+        for line in file:
+            job_file = f'{qsub_job_dir}/run_{i}'
+            fp = open(job_file, 'w')
+            fp.write('#!/bin/csh\n')
+            fp.write(f'#PBS -q {queue}\n')
+            fp.write(f'#PBS -N {prefix}_{i}\n')
+            fp.write(f'#PBS -l walltime={wall_time}\n')
+            fp.write(f'#PBS -l nodes=1:ppn=1\n')
+            fp.write(f'#PBS -m n\n')
+            fp.write(f'{line}\n')
+            fp.close()
+            job_fp.write(f'qsub {job_file}\n')
+            i += 1
+    job_fp.close()
 
 if __name__ == '__main__':
     job_file = sys.argv[1]

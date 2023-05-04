@@ -14,6 +14,7 @@ if ($#argv >= 11) then
     setenv UTIL "$argv[11]"
 endif
 
+setenv RUN_GENERIC 0
 if ($#argv >= 12) then
   setenv RUN_GENERIC "$argv[12]"
 endif
