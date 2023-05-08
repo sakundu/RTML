@@ -88,7 +88,7 @@ def gen_qsub_from_job_list(job_list_file:str, qsub_dir:str,
             fp.write(f'#PBS -q {queue}\n')
             fp.write(f'#PBS -N {prefix}_{i}\n')
             fp.write(f'#PBS -l walltime={wall_time}\n')
-            fp.write(f'#PBS -l nodes=1:ppn=1\n')
+            fp.write(f'#PBS -l nodes=1:ppn=4\n')
             fp.write(f'#PBS -m n\n')
             fp.write(f'{line}\n')
             fp.close()
