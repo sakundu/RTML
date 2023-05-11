@@ -2,7 +2,8 @@
 Input: Provide the job file and RPT file
 '''
 from math import floor, log
-from typing import List 
+from typing import List, Optional
+import pandas as pd
 import sys
 import os
 
@@ -71,12 +72,19 @@ def gen_gnu_job_list(job_file: str, run_dir: str, rpt_file: str,
 
 def gen_qsub_from_job_list(job_list_file:str, qsub_dir:str, 
                            prefix:str, queue: str = 'home',
-                           wall_time:str = '12:30:00') -> None:
+                           wall_time:str = '12:30:00',
+                           log_dir:Optional[str] = None) -> None:
     qsub_file=f'{qsub_dir}/{prefix}_joblist'
     qsub_job_dir=f'{qsub_dir}/{prefix}'
     
     if not os.path.exists(qsub_job_dir):
         os.makedirs(qsub_job_dir)
+    
+    if log_dir != None and not os.path.isabs(log_dir):
+        log_dir = os.path.abspath(log_dir)
+    
+    if log_dir != None and not os.path.exists(log_dir):
+        os.makedirs(log_dir)
     
     i = 1
     job_fp = open(qsub_file, 'w')
@@ -90,20 +98,84 @@ def gen_qsub_from_job_list(job_list_file:str, qsub_dir:str,
             fp.write(f'#PBS -l walltime={wall_time}\n')
             fp.write(f'#PBS -l nodes=1:ppn=4\n')
             fp.write(f'#PBS -m n\n')
+            
+            if log_dir != None:
+                fp.write(f'#PBS -o {log_dir}/{prefix}_{i}.log\n')
+                fp.write(f'#PBS -e {log_dir}/{prefix}_{i}.err\n')
+            
             fp.write(f'{line}\n')
             fp.close()
             job_fp.write(f'qsub {job_file}\n')
             i += 1
     job_fp.close()
 
+def find_missing_job(job_file:str, rpt_file:str, missing_job_file:str):
+    
+    # Ensure the job_file exists
+    if not os.path.exists(job_file):
+        print(f'Please ensure the job file exists\nJob file: {job_file}')
+        exit()
+    
+    # Ensure the rpt_file exists
+    if not os.path.exists(rpt_file):
+        print(f'Please ensure the rpt file exists\nRpt file: {rpt_file}')
+        exit()
+    
+    # Ensure the missing_job_file directory exists
+    missing_job_file_dir = os.path.dirname(missing_job_file)
+    if not os.path.exists(missing_job_file_dir):
+        os.makedirs(missing_job_file_dir)
+    
+    rpt_df = pd.read_csv(rpt_file)
+    missing_job_fp = open(missing_job_file, 'w')
+    
+    with open(job_file, "r") as file:
+        for line in file:
+            items = line.split(' ')
+            benchmark = items[2]
+            tcp = items[3]
+            bit_width = items[5]
+            num_cycle = items[6]
+            size = items[8]
+            num_units = items[9]
+            util = items[12]
+            tmp_df = pd.DataFrame({
+                'benchmark': [benchmark],
+                'tcp': [tcp],
+                'size': [size],
+                'num_cycle': [num_cycle],
+                'util': [util],
+                'num_unit': [num_units],
+                'bit_width': [bit_width]
+                })
+            
+            # Check if tmp_df is in rpt_df
+            tmp_df = tmp_df.merge(rpt_df, how='inner', \
+                                  on=['benchmark', 'tcp', 'size', \
+                                    'num_cycle','util', 'num_unit', \
+                                    'bit_width'])
+            
+            if tmp_df.empty:
+                missing_job_fp.write(line)
+    
+    missing_job_fp.close()
+        
 if __name__ == '__main__':
     job_file = sys.argv[1]
     run_dir = sys.argv[2]
     rpt_file = sys.argv[3]
 
-    num_cycles = [4, 5, 8, 10, 11, 15, 20, 20, 5, 10, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
-    sizes = [50, 40, 25, 20, 35, 25, 10, 45, 20, 50, 52, 31, 12, 41, 25, 19, 44, 10, 33, 16, 27, 50, 21, 37, 54, 29, 46, 8, 14, 35, 23, 48, 39, 6]
-    cp_util_list = [[917, 0.408], [636, 0.592], [1098, 0.458], [787, 0.608], [826, 0.825], [869, 0.725], [689, 0.658], [613, 0.675], [662, 0.492], [552, 0.475], [970, 0.892], [1492, 0.558], [1818, 0.692], [1030, 0.758], [534, 0.542], [487, 0.708], [591, 0.525], [502, 0.775], [473, 0.642], [460, 0.575], [1265, 0.625], [571, 0.742], [751, 0.875], [719, 0.792], [518, 0.842], [1639, 0.808], [2325, 0.425], [2040, 0.858], [1176, 0.508], [1369, 0.442]]
+    num_cycles = [4, 5, 8, 10, 11, 15, 20, 20, 5, 10, 2, 3, 4, 5, 6, 7, 8, 9, \
+        10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+    sizes = [50, 40, 25, 20, 35, 25, 10, 45, 20, 50, 52, 31, 12, 41, 25, 19, \
+        44, 10, 33, 16, 27, 50, 21, 37, 54, 29, 46, 8, 14, 35, 23, 48, 39, 6]
+    cp_util_list = [[917, 0.408], [636, 0.592], [1098, 0.458], [787, 0.608], \
+        [826, 0.825], [869, 0.725], [689, 0.658], [613, 0.675], [662, 0.492], \
+        [552, 0.475], [970, 0.892], [1492, 0.558], [1818, 0.692], \
+        [1030, 0.758], [534, 0.542], [487, 0.708], [591, 0.525], [502, 0.775], \
+        [473, 0.642], [460, 0.575], [1265, 0.625], [571, 0.742], [751, 0.875], \
+        [719, 0.792], [518, 0.842], [1639, 0.808], [2325, 0.425], \
+        [2040, 0.858], [1176, 0.508], [1369, 0.442]]
 
     ip_bits = [4, 8]
     num_units = [1]
