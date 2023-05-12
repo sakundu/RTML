@@ -133,12 +133,12 @@ def find_missing_job(job_file:str, rpt_file:str, missing_job_file:str):
         for line in file:
             items = line.split(' ')
             benchmark = items[2]
-            tcp = items[3]
-            bit_width = items[5]
-            num_cycle = items[6]
-            size = items[8]
-            num_units = items[9]
-            util = items[12]
+            tcp = float(items[3])
+            bit_width = float(items[5])
+            num_cycle = float(items[6])
+            size = float(items[8])
+            num_units = float(items[9])
+            util = float(items[12])
             tmp_df = pd.DataFrame({
                 'benchmark': [benchmark],
                 'tcp': [tcp],
