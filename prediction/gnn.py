@@ -1,24 +1,25 @@
 from typing import Any, List, Union, Optional, Dict, Tuple
 import networkx as nx
 import numpy as np
+import random
 from numpy.typing import NDArray
 import pandas as pd
+
 import pickle
 import os
-import time
-
-## Used for reproducibility of pytorch gpu results
-os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
 import torch
-torch.use_deterministic_algorithms(True)
+import time
 from gen_graph import gen_graph_from_netlist
 from torch.nn import Linear, ReLU
+import torch_geometric
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch_geometric.data import Dataset, Data
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GraphConv, GCNConv, GATConv, \
-    TransformerConv, global_mean_pool, global_max_pool, global_add_pool
+        TransformerConv, global_mean_pool, global_max_pool, global_add_pool, \
+        SAGEConv, SGConv, ARMAConv, GINConv, GatedGraphConv, NNConv
 
+import torch.autograd.profiler as profiler
 from ray import tune
 from ray.tune import CLIReporter
 from ray.tune.schedulers import ASHAScheduler, AsyncHyperBandScheduler
@@ -80,14 +81,16 @@ class GCN(torch.nn.Module):
                  conv_layer_count:int = 3,
                  pool_type:int = 0,
                  fc_layer_count:int = 5,
-                 fc_layer_activation:int = 0):
+                 fc_layer_activation:int = 0,
+                 seed:int = 42):
         super(GCN, self).__init__()
-        torch.manual_seed(12345)
+        # torch.manual_seed(seed)
         self.gcn_layers = torch.nn.ModuleList()
         self.fc_layers = torch.nn.ModuleList()
         self.pool_type = pool_type
         # Now we are not using this data
         self.fc_layer_activation = fc_layer_activation
+        self.flag = False
         
         if conv_type == 0:
             self.gcn_layers.append(GCNConv(node_feature_count, 
@@ -128,6 +131,10 @@ class GCN(torch.nn.Module):
                     self.gcn_layers.append(TransformerConv(hidden_channels, 
                                                            hidden_channels))
         
+        # for name, param in self.gcn_layers[-1].named_parameters():
+        #     print(name, param.data)
+        #     break
+        
         layer_config = get_node_config(hidden_channels, fc_layer_count)
         prev_layer_node_count = hidden_channels
         for node_count in layer_config:
@@ -142,10 +149,14 @@ class GCN(torch.nn.Module):
     def forward(self, data):
         x, edge_index, batch = data.x, data.edge_index, data.batch
         # GCN Layers
+        if self.flag:
+            time1 = time.time()
         for layer in self.gcn_layers:
             x = layer(x, edge_index)
             x = x.relu()
         
+        if self.flag:
+            time2 = time.time()
         # Pooling Layer
         if self.pool_type == 0:
             x = global_mean_pool(x, batch)
@@ -154,6 +165,9 @@ class GCN(torch.nn.Module):
         elif self.pool_type == 2:
             x = global_add_pool(x, batch)
         
+        if self.flag:
+            time3 = time.time()
+        
         # FC Layers
         for i in range(self.fc_layers_count - 1):
             x = self.fc_layers[i](x)
@@ -161,6 +175,16 @@ class GCN(torch.nn.Module):
         
         x = self.fc_layers[-1](x)
         
+        if self.flag:
+            time4 = time.time()
+            gcn_time = time2 - time1
+            pool_time = time3 - time2
+            fc_time = time4 - time3
+            print(f"GCN Convolution time:{gcn_time:.2f}")
+            print(f"Pooling time:{pool_time:.2f}")
+            print(f"FC time:{fc_time:.2f}")
+            self.flag = False
+            
         return x.squeeze()
 
 class CustomGraphDataset(Dataset):
@@ -174,7 +198,8 @@ class CustomGraphDataset(Dataset):
             x = self._get_node_features(graph, static_feature_list[i])
             y = torch.tensor(label[i])
             
-            # Create a PyTorch Geometric Data object from the node features and edge list
+            # Create a PyTorch Geometric Data object from the node features 
+            # and edge list
             edge_index = torch.tensor(list(graph.edges)).t().contiguous()
             data = Data(x=x, edge_index=edge_index, y=y)
             self.data_list.append(data)
@@ -202,7 +227,13 @@ class CustomGraphDataset(Dataset):
     def __getitem__(self, index:int):
         data = self.data_list[index]
         return data
+    
+    def get(self, index:int):
+        return self.data_list[index]
 
+    def len(self):
+        return len(self.data_list)
+    
     def __len__(self):
         return len(self.data_list)
 
@@ -214,13 +245,28 @@ def model_train(model,
           device,
           scheduler:Optional[ReduceLROnPlateau] = None,
           validation_loader:Optional[DataLoader] = None,
-          isPrint:bool = False) -> float:
+          isPrint:bool = False,
+          prefix:Optional[int] = None) -> float:
     
-    # model = model.to(device)
+    ## Set parameters for training
     train_error = 0.0
     best_valid_error = 100.0
-    best_model = None
     
+    ## Set parameters for early stopping
+    early_stopping_patience = 20
+    ## Do not start early stopping checks before first 50 epoch of training
+    early_stopping_epoch = 50
+    epoch_without_improvement = 0
+    
+    if not os.path.exists('./save_model'):
+        os.makedirs('./save_model')
+        
+    if prefix is None:
+        model_path = './save_model/model.pt'
+    else:
+        model_path = f'./save_model/model_{prefix}.pt'
+    
+    # Training loop
     for e in range(epoch):
         model.train()
         running_loss = 0.0
@@ -247,7 +293,19 @@ def model_train(model,
             val_error = running_loss / len(validation_loader)
             if val_error < best_valid_error:
                 best_valid_error = val_error
-                best_model = model.state_dict()
+                torch.save(model.state_dict(), f'{model_path}')
+            
+            ## Add early stopping
+            if e > early_stopping_epoch:
+                if val_error > best_valid_error:
+                    epoch_without_improvement += 1
+                else:
+                    epoch_without_improvement = 0
+                
+                if epoch_without_improvement > early_stopping_patience:
+                    if isPrint:
+                        print(f"Early stopping at epoch:{e}")
+                    break
         
         if scheduler is not None:
             scheduler.step(val_error)
@@ -256,8 +314,9 @@ def model_train(model,
             print('Epoch: {}, Train Loss: {}, Validation Loss:{}'\
                 .format(e+1, train_error, val_error))
     
-    if best_model is not None:
-        model.load_state_dict(best_model)
+    if os.path.exists(f'{model_path}'):
+        print(f"Best validation loss: {best_valid_error}")
+        model.load_state_dict(torch.load(f'{model_path}'))
         
     return train_error
 
@@ -348,7 +407,8 @@ def load_data(train_csv:str,
 
 def train_svm(train_csv:str, test_csv:str, metric:str, 
               train_graph_file:str, test_graph_file:str,
-              netlist_dir:str, config:dict, isPrint:bool = False):
+              netlist_dir:str, config:dict, isPrint:bool = False,
+              seed:int = 42):
     
     train_graph_list, train_static_features, train_y = \
         load_data(train_csv, metric, netlist_dir, train_graph_file)
@@ -366,22 +426,28 @@ def train_svm(train_csv:str, test_csv:str, metric:str,
     
     test_data = CustomGraphDataset(test_graph_list, test_static_features,
                                    test_y)
-    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
     
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    test_loader = DataLoader(test_data, batch_size=batch_size, shuffle=False)
+    
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')    
+    # device = torch.device('cpu')
+    # print(device)
     
     model = GCN(train_data[0].num_node_features, batch_size, 
                 conv_layer_count=config['conv_layer_count'],
                 conv_type=config['conv_type'],
-                fc_layer_count=config['fc_layer_count']).to(device)
+                fc_layer_count=config['fc_layer_count'])
+        
+    model = model.to(device)
     
     loss_fn = MAPELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer,
                                         factor=0.7, patience=5, min_lr=1e-6)
     
+    pid = os.getpid()
     _ = model_train(model, train_loader, optimizer, loss_fn, epoch,
-                             device, scheduler, test_loader, isPrint)
+                             device, scheduler, test_loader, isPrint, pid)
     
     _, meanAPE, maxAPE = model_eval(model, loss_fn, test_loader, device)
     
@@ -395,7 +461,7 @@ def train_svm(train_csv:str, test_csv:str, metric:str,
     #         path = os.path.join(checkpoint_dir, "checkpoint")
     #         torch.save((model.state_dict(), optimizer.state_dict()), path)
     
-    return loss, meanAPE, maxAPE
+    return loss, meanAPE, maxAPE, pid
 
 class tuneGCN:
     def __init__(self, train_csv:str, test_csv:str, metric:str, 
@@ -415,8 +481,8 @@ class tuneGCN:
         self.config = {
             "lr": tune.loguniform(1e-5, 1e-1),
             "batch_size": tune.choice([16, 32, 64]),
-            "epoch": tune.choice([100, 200, 300, 400]),
-            "conv_layer_count": tune.choice([1, 2, 3, 4, 5, 6]),
+            "epoch": tune.choice([400]),
+            "conv_layer_count": tune.choice([2, 3, 4, 5, 6]),
             "conv_type": tune.choice([0, 1, 2]),
             "fc_layer_count": tune.choice([2, 3, 4, 5, 6, 7, 8, 9])
         }
@@ -424,16 +490,20 @@ class tuneGCN:
         self.initla_config = [
             {"lr": 0.01,
             "batch_size": 32,
-            "epoch": 300,
+            "epoch": 400,
             "conv_layer_count": 3,
             "conv_type": 0,
             "fc_layer_count": 5},
             {"lr": 0.001,
             "batch_size": 32,
-            "epoch": 200,
+            "epoch": 400,
             "conv_layer_count": 5,
-            "conv_type": 0,
-            "fc_layer_count": 5}]
+            "conv_type": 2,
+            "fc_layer_count": 5},
+            {'lr': 0.0316, 'batch_size': 16, 'epoch': 400,
+             'conv_layer_count': 3, 'conv_type': 0, 'fc_layer_count': 5},
+            {'lr': 0.019304542690028535, 'batch_size': 32, 'epoch': 400,
+             'conv_layer_count': 4, 'conv_type': 2, 'fc_layer_count': 8}]
         
         self.algo = HyperOptSearch(points_to_evaluate=self.initla_config)
         self.algo = ConcurrencyLimiter(self.algo, max_concurrent=8)
@@ -442,19 +512,25 @@ class tuneGCN:
         self.num_samples = 50
     
     def autotuneObjective(self, config):
-        val_loss, meanAPE, maxAPE = train_svm(self.train_csv, self.test_csv, 
+        os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+        torch.use_deterministic_algorithms(True)
+        torch.manual_seed(42)
+        torch_geometric.seed_everything(42)
+        val_loss, meanAPE, maxAPE, pid = train_svm(self.train_csv,
+                                                   self.test_csv, 
                                             self.metric, self.train_graph_file, 
                                             self.test_graph_file, 
                                             self.netlist_dir, config)
         
-        tune.report(loss = val_loss, meanAPE = meanAPE, maxAPE = maxAPE)
+        tune.report(loss = val_loss, meanAPE = meanAPE, maxAPE = maxAPE, 
+                    pid = pid)
     
     def __call__(self):
         start = time.time()
         analysis = tune.run(self.autotuneObjective,
                             metric="loss",
                             mode="min",
-                            resources_per_trial={"cpu": 4, "gpu": 1},
+                            resources_per_trial={"cpu": 10, "gpu": 1},
                             search_alg = self.algo,
                             scheduler = self.scheduler,
                             num_samples = self.num_samples,
@@ -465,18 +541,26 @@ class tuneGCN:
         
         best_cost = analysis.best_result['loss']
         best_config = analysis.best_config
-        print(f"Best cost: {best_cost} meanAPE:{analysis.best_result['meanAPE']}, maxAPE:{analysis.best_result['maxAPE']}")
+        print(f"Best cost: {best_cost} "
+              f"meanAPE:{analysis.best_result['meanAPE']}, "
+              f"maxAPE:{analysis.best_result['maxAPE']}")
         print(f"Best config: {best_config}")
         return
 
 
-if __name__ == '__main__':    
+if __name__ == '__main__': 
+    os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+    torch.use_deterministic_algorithms(True)
+    torch.manual_seed(42)
+    torch_geometric.seed_everything(42)
+    # torch.backends.cudnn.benchmark = False
+    
     train_csv = '/mnt/mwoo/sakundu/RTML/data/axiline_svm_lhs_util_20230209_train.csv'
     test_csv = '/mnt/mwoo/sakundu/RTML/data/axiline_svm_lhs_util_20230209_test.csv'
-    metric = 'energy(uJ)'
+    # metric = 'energy(uJ)'
     # metric = 'total_power(mW)'
     # metric = 'corea_area(um^2)'
-    # metric = 'runtime(ms)'
+    metric = 'runtime(ms)'
 
     train_graph_file = '/mnt/mwoo/sakundu/RTML/generic_graph/gnn_model_tune/graphs/train_graph_list.pkl'
     test_graph_file = '/mnt/mwoo/sakundu/RTML/generic_graph/gnn_model_tune/graphs/test_graph_list.pkl'
@@ -486,3 +570,24 @@ if __name__ == '__main__':
                        test_graph_file, netlist_dir)
     
     tune_gcn()
+    
+    # config = {'lr': 0.01, 'batch_size': 64, 'epoch': 400, 'conv_layer_count': 5, 
+    #           'conv_type': 1, 'fc_layer_count': 5}
+    # config = {'lr': 0.011564289781553664, 'batch_size': 64, 'epoch': 400, 
+    #          'conv_layer_count': 5, 'conv_type': 2, 'fc_layer_count': 2}
+    # config = {'lr': 0.0016559859682101763, 'batch_size': 32, 'epoch': 300, 
+    #          'conv_layer_count': 4, 'conv_type': 2, 'fc_layer_count': 2}
+    # config = {'lr': 0.00702148393868394, 'batch_size': 32, 'epoch': 400, 
+    #          'conv_layer_count': 6, 'conv_type': 2, 'fc_layer_count': 5}
+    # config = {'lr': 0.0011723209581364668, 'batch_size': 32, 'epoch': 400, 
+    #          'conv_layer_count': 2, 'conv_type': 2, 'fc_layer_count': 9}
+    # config = {'lr': 0.0015075244992061281, 'batch_size': 64, 'epoch': 400, 
+    #           'conv_layer_count': 4, 'conv_type': 1, 'fc_layer_count': 3}
+    # config = {'lr': 0.0010299375405470733, 'batch_size': 16, 'epoch': 400, 
+    #           'conv_layer_count': 4, 'conv_type': 2, 'fc_layer_count': 6}
+    # config = {'lr': 0.005106887086367493, 'batch_size': 16, 'epoch': 400, 
+    #           'conv_layer_count': 4, 'conv_type': 2, 'fc_layer_count': 4}
+    # val_loss, meanAPE, maxAPE, pid = train_svm(train_csv, test_csv, metric,
+    #                                       train_graph_file, test_graph_file, 
+    #                                       netlist_dir, config, True)
+    
