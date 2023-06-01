@@ -22,7 +22,7 @@ if len(design_details) in [6, 7]:
     num_cycle = int(design_details[2])
     num_unit = int(design_details[3])
     bit_width = int(design_details[4])
-    tcp = int(design_details[5])
+    tcp = float(design_details[5])
     tcf = round(1000/tcp,6)
     if len(design_details) == 7:
         util = float(design_details[6])
