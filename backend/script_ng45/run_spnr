@@ -1,0 +1,9 @@
+#!/bin/tcsh
+module unload design_compiler
+module load design_compiler/R-2020.09
+module unload innovus
+module load innovus/21.1
+
+mkdir log -p
+dc_shell -f run_dc_arm_ng45.tcl -output_log_file log/run_dc.log | tee log/run_dc_screen.log
+innovus -64 -init run_invs_ng45.tcl -log log/run_innovus.log
