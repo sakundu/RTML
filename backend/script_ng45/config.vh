@@ -4,7 +4,7 @@
 `define LOG_NUM_CYCLE xx_log_num_cycle_xx
 `define SIZE xx_size_xx
 `define NUMBER_UNIT xx_unit_xx
-`define INST_BITWIDTH 3
+`define INST_BITWIDTH 4
 
 // `define SVM 1
 // `define LINEAR 1

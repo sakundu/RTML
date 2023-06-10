@@ -2,7 +2,7 @@
 # We thank Cadence for granting permission to share our research to help promote and foster the next generation of innovators.
 
 set DESIGN accelerator
-set rtldir ". /home/zf4_projects/RTML/sakundu/PNR/ICCAD22/RTL/training"
+set rtldir ". /home/zf4_projects/RTML/sakundu/PNR/ICCAD22/RTL/inference"
 set sdc  ./${DESIGN}.sdc
 
 # Effort level during optimization in syn_generic -physical (or called generic) stage

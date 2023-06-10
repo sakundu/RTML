@@ -208,5 +208,6 @@ timeDesign -postRoute >  ${rptDir}/invs_timeDesign_updated.rpt
 report_power -view POWER_VIEW -outfile ${rptDir}/invs_ff_power_updated.rpt
 report_power -view WC_VIEW -outfile ${rptDir}/invs_ss_power_updated.rpt
 write_sdc > ${rptDir}/invs_route_updated.sdc
+# saveDesign $encDir/${design}.enc
 
 exit

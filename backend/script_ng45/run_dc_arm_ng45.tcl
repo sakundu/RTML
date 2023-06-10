@@ -4,7 +4,7 @@ set_host_options -max_cores 4
 set top_module accelerator
 set libdir "/home/fetzfs_projects/RTML/sakundu/Code/RTML/backend/NanGate45/lib"
 
-lappend search_path "."
+lappend search_path ". /home/zf4_projects/RTML/sakundu/PNR/ICCAD22/RTL/inference"
 lappend search_path "/home/tool/synopsys/DesignCompiler/N-2017.09-SP5/libraries/syn"
 lappend search_path $libdir
 
